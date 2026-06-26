@@ -32,7 +32,12 @@ constexpr unsigned int IS_DIGIT     = 0x00080000;
 constexpr unsigned int IS_HEX_DIGIT = 0x00100000;
 constexpr unsigned int IS_ASCII     = 0x00200000;
 constexpr unsigned int IS_KEYWORD   = 0x00400000;  // -.:_0-9a-zA-Z(/\@<>=*[{"
-constexpr unsigned int IS_NON_HEX   = 0x00001000;
+constexpr unsigned int IS_NON_HEX   = 0x00800000;  // property flag; must live ABOVE the HEX value mask
+
+// IS_NON_HEX is a property flag, not part of the packed nibble value, so it must
+// not overlap the low-16-bit HEX value region (it used to be 0x1000, which made
+// hexdigit() of a non-hex char return 0x1000 instead of a clean sentinel).
+static_assert((HEX & IS_NON_HEX) == 0, "IS_NON_HEX must not overlap the HEX value mask");
 
 constexpr unsigned int S = IS_SPACE;
 constexpr unsigned int A = IS_ALPHA;
@@ -135,23 +140,35 @@ is_hexdigit(char c) noexcept {
 }
 
 
+// Returned by hexdigit() for any character that is not a hex digit. It is well
+// out of the 0..15 nibble range, so callers can detect invalid input instead of
+// mistaking a flag bit (the old behavior returned 0x1000) or a stray 0 for a
+// real nibble value.
+constexpr unsigned int NO_HEXDIGIT = 0xffffffff;
+
+
+// returns the 0..15 nibble value of a hex character, or NO_HEXDIGIT if the
+// character is not a valid hex digit
 inline constexpr unsigned int
 hexdigit(char c) noexcept {
-	return char_tab[static_cast<unsigned char>(c)] & HEX;
+	return is_hexdigit(c) ? (char_tab[static_cast<unsigned char>(c)] & HEX) : NO_HEXDIGIT;
 }
 
 
-// converts the two hexadecimal characters to an int (a byte)
+// Converts the two leading hexadecimal characters at *ptr to a byte (0..255) and
+// advances *ptr past them. Returns -1 (and leaves *ptr untouched) if either
+// character is not a valid hex digit, so callers can reject malformed input
+// (e.g. a percent-escape decoder) instead of trusting garbage.
 inline constexpr int
 hexdec(const char** ptr) noexcept {
 	auto pos = *ptr;
 	auto a = hexdigit(*pos++);
 	auto b = hexdigit(*pos++);
-	int dec = a << 4 | b;
-	if (dec < 256) {
-		*ptr = pos;
+	if (a == NO_HEXDIGIT || b == NO_HEXDIGIT) {
+		return -1;
 	}
-	return dec;
+	*ptr = pos;
+	return static_cast<int>(a << 4 | b);
 }
 
 

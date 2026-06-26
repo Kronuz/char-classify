@@ -51,11 +51,34 @@ static void test_hex() {
 	static_assert(chars::hexdigit('F') == 15, "hexdigit('F') == 15");
 	static_assert(chars::hexdigit('0') == 0, "hexdigit('0') == 0");
 
+	// Regression: non-hex chars must return the NO_HEXDIGIT sentinel, NOT the
+	// in-range-looking 0x1000 (4096) the old IS_NON_HEX flag leaked through the
+	// HEX value mask, and not a stray 0 that looks like a valid nibble.
+	static_assert(chars::hexdigit('z') == chars::NO_HEXDIGIT, "hexdigit('z') is the sentinel");
+	static_assert(chars::hexdigit('g') == chars::NO_HEXDIGIT, "hexdigit('g') is the sentinel");
+	static_assert(chars::hexdigit('z') != 4096, "hexdigit('z') is not the stale 0x1000 value");
+	static_assert(chars::hexdigit('g') != 0, "hexdigit('g') is not a stray 0 nibble");
+
 	// hexdec decodes two hex chars to a byte and advances the pointer.
 	const char* p = "ff";
 	assert(chars::hexdec(&p) == 255);
 	const char* q = "1b";
 	assert(chars::hexdec(&q) == 0x1b);
+
+	// Regression: hexdec must reject invalid input cleanly (return -1, leave the
+	// pointer untouched) instead of producing garbage for untrusted input.
+	const char* bad1_start = "gg";
+	const char* bad1 = bad1_start;
+	assert(chars::hexdec(&bad1) == -1 && bad1 == bad1_start);
+	const char* bad2_start = "0x";  // first nibble valid, second isn't
+	const char* bad2 = bad2_start;
+	assert(chars::hexdec(&bad2) == -1 && bad2 == bad2_start);
+
+	// Valid decodes still work and still advance the pointer past both nibbles.
+	const char* ok1 = "ff";
+	assert(chars::hexdec(&ok1) == 255 && *ok1 == '\0');
+	const char* ok2 = "0a";
+	assert(chars::hexdec(&ok2) == 10 && *ok2 == '\0');
 
 	std::printf("chars hex OK: is_hexdigit, hexdigit nibble, hexdec\n");
 }
