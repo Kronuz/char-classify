@@ -20,4 +20,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_executable(char_classify_test test/test.cc)
   target_link_libraries(char_classify_test PRIVATE char_classify)
   add_test(NAME char_classify COMMAND char_classify_test)
+
+  # A runnable tour of the library (not a test): build & run ./build/char_classify_demo
+  add_executable(char_classify_demo examples/demo.cc)
+  target_link_libraries(char_classify_demo PRIVATE char_classify)
 endif()

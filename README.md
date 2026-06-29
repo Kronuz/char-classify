@@ -75,6 +75,21 @@ the hex helpers (`is_hexdigit`, `hexdigit`, `hexdec`), and case folding
 (`tolower`/`toupper`, `char_repr`), almost all via `static_assert`. It prints
 `all char-classify tests passed` and exits 0.
 
+## Examples
+
+[`examples/demo.cc`](examples/demo.cc) is a runnable tour. A top-level CMake build
+produces it next to the test:
+
+```sh
+cmake -B build && cmake --build build && ./build/char_classify_demo
+```
+
+It classifies a row of characters across the predicates, proves with
+`static_assert` that the classification (and case folding) ran in the compiler,
+decodes hex bytes at compile time (including a rejected bad input), and then runs a
+tiny tokenizer whose inner loop leans on `is_space` / `is_alnum` / `is_digit` to
+split a line into words, numbers, and whitespace, with no `<cctype>` anywhere.
+
 ## Provenance
 
 Extracted from [Xapiand](https://github.com/Kronuz/Xapiand). `chars.hh` had zero
