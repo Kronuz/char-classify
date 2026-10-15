@@ -1,5 +1,7 @@
 # char-classify
 
+[![CI](https://github.com/Kronuz/char-classify/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/char-classify/actions/workflows/ci.yml)
+
 ![constexpr](https://img.shields.io/badge/constexpr-compile--time-blue)
 
 A small, header-only, dependency-free **compile-time character classification**
