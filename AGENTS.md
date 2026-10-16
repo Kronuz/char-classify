@@ -12,7 +12,8 @@ chars.hh                     Table-driven constexpr char classification (is_*, h
 test/test.cc                 Runnable smoke test: classification, hex helpers, case folding.
 CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest test `char_classify`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC.
-README.md                    What it is, install, usage.
+README.md                    What it is, install, quick start.
+docs/API.md                  What it provides and usage.
 ARCHITECTURE.md              Internal design of the classification table, trade-offs.
 ```
 
