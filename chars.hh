@@ -173,6 +173,33 @@ hexdec(const char** ptr) noexcept {
 }
 
 
+// Returned by hex_value() for any byte that is not a hex digit.
+constexpr unsigned char NO_HEX_VALUE = 0xff;
+
+
+// The byte-wide sibling of hexdigit(): a 256-byte table of nibble values, 0xff for any byte
+// that is not a hex digit. A decoder that wants the table small and the sentinel in a byte
+// (a percent-escape decoder, a hex-string parser) reads it directly.
+struct HexValueTable {
+	unsigned char v[256];
+	constexpr HexValueTable() noexcept : v() {
+		for (int i = 0; i < 256; ++i) { v[i] = NO_HEX_VALUE; }
+		for (int i = 0; i < 10; ++i) { v['0' + i] = static_cast<unsigned char>(i); }
+		for (int i = 0; i < 6; ++i) { v['a' + i] = v['A' + i] = static_cast<unsigned char>(10 + i); }
+	}
+};
+
+inline constexpr HexValueTable hex_value_table{};
+
+
+// returns the 0..15 nibble value of a hex character, or NO_HEX_VALUE (0xff) if the
+// character is not a valid hex digit
+inline constexpr unsigned char
+hex_value(char c) noexcept {
+	return hex_value_table.v[static_cast<unsigned char>(c)];
+}
+
+
 // converts a character to lowercase
 inline constexpr char tolower(char c) noexcept {
 	constexpr char _[256]{

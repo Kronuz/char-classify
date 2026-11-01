@@ -8,16 +8,21 @@ easy to fall into.
 ## Repo map
 
 ```
-chars.hh                     Table-driven constexpr char classification (is_*, hexdigit/hexdec, tolower/toupper, char_repr). Header. Verbatim from Xapiand.
+chars.hh                     Table-driven constexpr char classification (is_*, hexdigit/hexdec, hex_value, tolower/toupper, char_repr). Header. From Xapiand; the hex byte table is additive.
+chars_simd.hh                Block scanners (FirstOf, Outside, find_outside, ascii_lower/upper) over NEON, SSE2 or a 64-bit SWAR fallback. CHARS_NO_SIMD forces the fallback. Header.
+chars_escape.hh              The C escaping kernel shared by escape() and repr(): EscapeTable, escape_measure, escape_emit. Header.
 test/test.cc                 Runnable smoke test: classification, hex helpers, case folding.
-CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest test `char_classify`.
+test/simd_test.cc            chars_simd.hh against scalar references (every byte at every lane, every short length, guard bytes). Built twice.
+test/escape_kernel_test.cc   chars_escape.hh against a scalar oracle (every byte at every position, random mixes, room checks). Built twice.
+CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest tests `char_classify`, `chars_simd`, `chars_simd_swar`, `chars_escape_kernel`, `chars_escape_kernel_swar`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC.
+CHANGELOG.md                 Dated changes, with numbers.
 README.md                    What it is, install, quick start.
 docs/API.md                  What it provides and usage.
-ARCHITECTURE.md              Internal design of the classification table, trade-offs.
+ARCHITECTURE.md              Internal design of the classification table, the block scanners and the escaping kernel, trade-offs.
 ```
 
-Everything is header-only. There is no `.cc` to compile except the test. The
+Everything is header-only. There is no `.cc` to compile except the tests. The
 CMake target is a pure `INTERFACE` library that only adds the source dir to the
 include path and requests `cxx_std_20`.
 
@@ -28,7 +33,9 @@ cmake -B build && cmake --build build && ctest --test-dir build
 ```
 
 Expected output ends with `all char-classify tests passed`, exit 0. The test
-target is `char_classify_test`; the registered CTest name is `char_classify`.
+target is `char_classify_test`; the registered CTest name is `char_classify`. The
+scanner and kernel tests run twice, once with the backend of the target and once with
+`CHARS_NO_SIMD` (the `_swar` tests), so both must agree with the reference.
 
 ## Conventions
 
@@ -49,7 +56,8 @@ target is `char_classify_test`; the registered CTest name is `char_classify`.
   bitset of flags per byte; each `is_*(char)` is a masked lookup. `tolower` /
   `toupper` / `char_repr` are driven by their own 256-entry tables. All of it is
   `constexpr` so callers can classify at compile time — the test asserts most of
-  it with `static_assert`. Don't introduce a runtime-only path.
+  it with `static_assert`. Don't introduce a runtime-only path in `chars.hh`
+  (`chars_simd.hh` and `chars_escape.hh` work on buffers and are runtime by nature).
 - **`is_*` returns an `int`, not a `bool`.** The predicates return the masked
   flag bits, so a true result is some non-zero `int`, not necessarily `1`. This
   is Xapiand's original contract; callers compare to `0` when they need a strict
@@ -57,7 +65,22 @@ target is `char_classify_test`; the registered CTest name is `char_classify`.
   packed-flag idiom the table relies on.
 - **`hexdigit` returns the nibble value, `hexdec` decodes a pair.** `hexdigit('a')
   == 10`; `hexdec(&p)` reads two hex chars, returns the byte, and advances `p`
-  only if the result is in range. Keep both.
+  only if the result is in range. Keep both. `hex_value` is the same nibble as a
+  byte with `0xff` for a non-digit; the test holds it equal to `hexdigit` on all 256 bytes.
+- **The three scanner backends give identical results.** A change to one backend's
+  operation is a change to all three, and `test/simd_test.cc` (default and `_swar`)
+  compares each with a scalar reference. A range takes `hi <= 0x7f` in every
+  backend, because the SWAR test works on the low seven bits of a lane; do not
+  loosen it in one.
+- **The kernel's table and its vector test describe one predicate.** A byte is plain
+  when it is in `0x20..0x7e` and is neither a backslash nor the quote. If that set
+  changes, change `make_escape_table`, `escape_byte`, the `Outside` test and the `pair`
+  count in `escape_measure` together; `test/escape_kernel_test.cc` fails otherwise.
+- **`escape_emit` stores past the byte it is writing, inside the measured room.** The
+  block store needs 16 bytes and the table store 4; both are inside `escape_measure`
+  bytes because the vector loop runs only while two blocks (32 bytes) remain. A change to
+  the loop bound or to the store sizes needs that argument redone, and the test's
+  exact-size buffer (a sanitizer report) and slack canaries check it.
 
 ## How to extend
 
@@ -79,5 +102,6 @@ target is `char_classify_test`; the registered CTest name is `char_classify`.
 
 This is a standalone extraction from
 [Xapiand](https://github.com/Kronuz/Xapiand). `chars.hh` had zero dependencies
-already, so it was copied verbatim — there is no decoupling delta. Keep it that
-way; any change here should be reconcilable with upstream as a plain edit.
+already, so it was copied verbatim, and the one change to it (the `hex_value` byte
+table) is an addition. `chars_simd.hh` and `chars_escape.hh` are new here. Keep any
+change to `chars.hh` reconcilable with upstream as a plain edit.

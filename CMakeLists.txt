@@ -21,6 +21,20 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(char_classify_test PRIVATE char_classify)
   add_test(NAME char_classify COMMAND char_classify_test)
 
+  # chars_simd.hh (byte-class scanning, case fold) and chars_escape.hh (the escaping kernel),
+  # each against a scalar reference, once with the backend of the target (NEON or SSE2) and
+  # once with the portable 64-bit backend forced by CHARS_NO_SIMD.
+  foreach(name simd escape_kernel)
+    add_executable(chars_${name}_test test/${name}_test.cc)
+    target_link_libraries(chars_${name}_test PRIVATE char_classify)
+    add_test(NAME chars_${name} COMMAND chars_${name}_test)
+
+    add_executable(chars_${name}_test_swar test/${name}_test.cc)
+    target_link_libraries(chars_${name}_test_swar PRIVATE char_classify)
+    target_compile_definitions(chars_${name}_test_swar PRIVATE CHARS_NO_SIMD=1)
+    add_test(NAME chars_${name}_swar COMMAND chars_${name}_test_swar)
+  endforeach()
+
   # A runnable tour of the library (not a test): build & run ./build/char_classify_demo
   add_executable(char_classify_demo examples/demo.cc)
   target_link_libraries(char_classify_demo PRIVATE char_classify)

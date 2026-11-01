@@ -8,6 +8,7 @@
 // Build via CMake: cmake -B build && cmake --build build && ctest --test-dir build
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "chars.hh"
@@ -80,7 +81,24 @@ static void test_hex() {
 	const char* ok2 = "0a";
 	assert(chars::hexdec(&ok2) == 10 && *ok2 == '\0');
 
-	std::printf("chars hex OK: is_hexdigit, hexdigit nibble, hexdec\n");
+	// hex_value is the byte-wide table: the same nibble as hexdigit, 0xff for anything else.
+	static_assert(chars::hex_value('0') == 0 && chars::hex_value('9') == 9, "decimal digits");
+	static_assert(chars::hex_value('a') == 10 && chars::hex_value('f') == 15, "lowercase hex");
+	static_assert(chars::hex_value('A') == 10 && chars::hex_value('F') == 15, "uppercase hex");
+	static_assert(chars::hex_value('g') == chars::NO_HEX_VALUE && chars::hex_value('\0') == 0xff, "not hex");
+	for (int c = 0; c < 256; ++c) {
+		const int want = (c >= '0' && c <= '9') ? c - '0'
+			: (c >= 'a' && c <= 'f') ? c - 'a' + 10
+			: (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0xff;
+		const unsigned nibble = chars::hexdigit(static_cast<char>(c));
+		if (chars::hex_value(static_cast<char>(c)) != want || (want == 0xff) != (nibble == chars::NO_HEXDIGIT) ||
+			(want != 0xff && nibble != static_cast<unsigned>(want))) {
+			std::fprintf(stderr, "hex_value(0x%02x) = %u, want %d\n", c, chars::hex_value(static_cast<char>(c)), want);
+			std::abort();
+		}
+	}
+
+	std::printf("chars hex OK: is_hexdigit, hexdigit nibble, hexdec, hex_value\n");
 }
 
 
