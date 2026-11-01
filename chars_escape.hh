@@ -100,12 +100,16 @@ inline constexpr EscapeTable escape_table_single = make_escape_table('\'');
 inline constexpr EscapeTable escape_table_double = make_escape_table('"');
 
 // The table for `quote` ('\0', '\'' or '"' are shared; any other byte is built into `scratch`).
+CHARS_NOINLINE inline const EscapeTable& escape_table_custom(char quote, EscapeTable& scratch) noexcept {
+	scratch = make_escape_table(quote);
+	return scratch;
+}
+
 inline const EscapeTable& escape_table(char quote, EscapeTable& scratch) noexcept {
 	if (quote == '\0') { return escape_table_none; }
 	if (quote == '\'') { return escape_table_single; }
 	if (quote == '"') { return escape_table_double; }
-	scratch = make_escape_table(quote);
-	return scratch;
+	return escape_table_custom(quote, scratch);
 }
 
 namespace escape_detail {
@@ -152,8 +156,8 @@ CHARS_NOINLINE inline Measured measure_blocks(const unsigned char* b, const unsi
 	return {n, b};
 }
 
-// Writes the escape of the blocks of [b, e) (at least two blocks must remain) at d, while two
-// blocks remain, and returns where the output and the input end.
+// Writes the escape of the whole blocks of [b, e) at d, for as long as two blocks remain (the
+// caller checks that two do on entry), and returns where the output and the input end.
 //
 // The escapes of a block are found once, from one mask. With few of them, the bytes before each
 // escape are copied with a whole-block store (a load at the first byte not yet written) and the
