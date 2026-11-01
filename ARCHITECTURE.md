@@ -120,3 +120,14 @@ The two block loops are out of line (`CHARS_NOINLINE`) and the thin functions ar
 are forced inline (`CHARS_ALWAYS_INLINE`), so an input under 16 bytes runs the same few
 instructions as a loop that never heard of vectors: a call and a prologue cost as much as
 the whole of a one-byte escape.
+
+That holds for the kernel; it also has to hold for the function that calls it. An entry
+point that contains the inlined block code, a table scratch for a custom quote and a string
+to fill saves every register those need and reserves their frame before it looks at the
+size, and for one to four bytes that costs more than the escaping itself. So the kernel names the short case:
+`escape_scalar_max` (8, where the 8-byte step starts), `escape_measure_scalar` and
+`escape_emit_scalar` (the byte loops, for any length), and `escape_table_shared(quote)` (the
+shared table for `'\0'`, `'\''` or `'"'`, or `nullptr` for a quote that needs a scratch). An
+entry point checks the size first, handles a short range with those four in its own few
+instructions, and sends the rest to a `CHARS_NOINLINE` function that holds the scratch and
+the block loops; `repr` and `escape` are written that way.

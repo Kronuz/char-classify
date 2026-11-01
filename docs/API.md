@@ -107,3 +107,11 @@ chars::escape_emit(out.data(), b, e, t);                  // writes exactly that
 and writes nothing outside it, which is why a result sized from the measure needs
 no bounds check per byte. `escape_byte(d, c, t)` writes one byte's escape.
 `make_escape_table(quote)` is `constexpr`.
+
+For a range shorter than `chars::escape_scalar_max` (8 bytes), `escape_measure_scalar(b, e, t)`
+and `escape_emit_scalar(d, b, e, t)` are the byte loops on their own: the same results as
+`escape_measure` and `escape_emit` (which use them for any tail), with no block code
+behind them, for any length; `escape_emit_scalar` writes exactly the measured bytes.
+`escape_table_shared(quote)` returns the shared table for `'\0'`, `'\''` and `'"'` and
+`nullptr` for any other quote, so a caller that handles a short range needs no scratch
+table. `repr` and `escape` use the three for input under 8 bytes.

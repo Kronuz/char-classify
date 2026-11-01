@@ -82,6 +82,13 @@ the same program on the portable backend, for a paired run.
   compares each with a scalar reference. A range takes `hi <= 0x7f` in every
   backend, because the SWAR test works on the low seven bits of a lane; do not
   loosen it in one.
+- **The entry points handle a short range before they set anything up.** `escape_scalar_max`,
+  `escape_measure_scalar`, `escape_emit_scalar` and `escape_table_shared` exist so that `repr()` and
+  `escape()` can escape fewer than 8 bytes in a function with no table scratch and no block code: a
+  frame that saves the registers of the block loops costs more than escaping one byte. Keep the block
+  loops and the scratch out of line (`CHARS_NOINLINE`) in any new caller, and keep the two scalar
+  functions free of anything that needs a frame. `escape_scalar_max` only chooses between two paths
+  that write the same bytes, so `tools/mutants.py` has no mutant for it.
 - **The kernel's table and its vector test describe one predicate.** A byte is plain
   when it is in `0x20..0x7e` and is neither a backslash nor the quote. If that set
   changes, change `make_escape_table`, `escape_byte`, the `Outside` test and the `pair`

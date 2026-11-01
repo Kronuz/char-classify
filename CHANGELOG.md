@@ -17,12 +17,22 @@ release tags yet, so entries are dated.
   i9-9980HK, with the rows where the library is behind: a compiler-vectorized arithmetic loop is 1.3x faster than
   the `is_alpha` table, `FirstOf<1>` is 1.4x to 2.6x slower than the system `memchr` on x86 from 256 bytes up,
   `hexdec` takes twice as long as arithmetic, and `absl::HexStringToBytes` is 2x to 3.4x faster than `hex_value`.
-- **`tools/mutants.py`.** 93 deliberate bugs in `chars.hh`, `chars_simd.hh` and `chars_escape.hh` (the hex table,
-  the scalar rules and table of the escaper, the 8-byte test and its loops, the block kernel, the mask operations,
-  the scanners, the case fold, and each backend's own operations), each built against the three tests in the
-  target's backend and with `CHARS_NO_SIMD`; every one must make a test fail, crash or hang. On the i9 (SSE2 and
-  portable) 87 of 87 are killed, on the M4 Pro (NEON and portable) 84 of 84; a backend the host does not build
-  is skipped and reported.
+- **`tools/mutants.py`.** 97 deliberate bugs in `chars.hh`, `chars_simd.hh` and `chars_escape.hh` (the hex table,
+  the scalar rules and table of the escaper, the scalar pair and the shared-table lookup, the 8-byte test and its
+  loops, the block kernel, the mask operations, the scanners, the case fold, and each backend's own operations),
+  each built against the three tests in the target's backend and with `CHARS_NO_SIMD`; every one must make a test
+  fail, crash or hang. On the i9 (SSE2 and portable) 91 of 91 are killed, on the M4 Pro (NEON and portable) 88 of
+  88; a backend the host does not build is skipped and reported. Five changes that cannot alter any output are
+  left out, among them the value of `escape_scalar_max`, which only chooses between two paths that write the same
+  bytes.
+- **`escape_scalar_max`, `escape_measure_scalar`, `escape_emit_scalar` and `escape_table_shared` in
+  `chars_escape.hh`.** The byte loops that `escape_measure` and `escape_emit` already ran for a tail, named and
+  usable on their own for any length, the length below which the 8-byte step does not start (8), and the shared
+  table for `'\0'`, `'\''` and `'"'` (`nullptr` for any other quote, which needs a table built in a scratch). An
+  entry point that sees fewer than `escape_scalar_max` bytes can escape them with these before it sets up anything
+  for the block loops. `test/escape_kernel_test.cc` checks the pair against the oracle (exact room, and the output
+  and input against an unmapped page) and the table lookup for every quote byte; `tools/mutants.py` has four
+  mutants of them, all killed.
 - **`test/guard_page.hh` and two guard-page tests.** `test_no_overread` in `test/simd_test.cc` runs `find`,
   `find_outside`, `ascii_lower` and `ascii_upper` with the input and the output ending exactly at an unmapped
   page, and the input starting exactly at one, for every length up to three blocks; `test_no_overrun` in
@@ -34,11 +44,20 @@ release tags yet, so entries are dated.
   `FirstOf::find` and `Outside::find` without changing the result. The guard-page test kills those two, and the
   mutants that read a byte beyond the input in the 8-byte loops of measure and emit die with a segmentation fault.
 
+### Changed
+
+- **`escape_measure` and `escape_emit` use the scalar pair for their tails.** The 8-byte step starts at
+  `escape_scalar_max` bytes and below that both functions are the scalar loop, as before; the loop is now a
+  function of its own that `repr` and `escape` call directly for a short input. The writer and the measurer
+  still agree byte for byte: `test/escape_kernel_test.cc` checks the exact room, and the tests of `repr` and
+  `escape` compare with their frozen originals.
+
 ### Measured
 
 Against the frozen original of `repr` and `escape` (their changelogs have the tables), one to four printable
-bytes take 0.4 to 3 ns longer with the shared kernel: the fixed work of the table and the block test. From 8 bytes
-up it is 2.5x to 3.7x faster.
+bytes were 0.4 to 3 ns slower with the shared kernel when the entry points set up the block loops before they
+looked at the size. With the short path (entry points that handle fewer than 8 bytes with the scalar pair) no
+row of 1 to 16 bytes is below 0.97x on the M4 Pro or the i9, and from 7 bytes up it is 2.5x to 3.7x faster.
 
 ## 2026-10-31
 

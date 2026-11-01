@@ -12,11 +12,12 @@ the builds that compile its code. One that needs a backend this host does not bu
 and reported, not counted as killed: run the tool on an arm64 host (neon), on an x86-64 host
 (sse2), or on an Apple silicon Mac with CXXFLAGS="-arch x86_64" (Rosetta runs the sse2 build).
 
-Four changes are left out because they leave the output unchanged: the dense-block threshold
+Five changes are left out because they leave the output unchanged: the dense-block threshold
 of the kernel (`dense_escapes`, which only picks between two correct writers), the `|` with
 `lows` in the swar `eq` (the mask discards those bits), `>=` against `>` for a block loop
-that hands the rest to the 8-byte loop, and the quote slot of the writer in `emit_blocks` when
-there is no quote (a NUL is outside the printable range already, so the set is the same).
+that hands the rest to the 8-byte loop, the quote slot of the writer in `emit_blocks` when
+there is no quote (a NUL is outside the printable range already, so the set is the same), and
+`escape_scalar_max` (it only chooses between two paths that write the same bytes).
 
 usage: tools/mutants.py TREE_DIR [CXX] [only-name ...]
        env: CXXFLAGS (extra flags), MUT_DIR (scratch dir), JOBS (parallel mutants, default 4), KEEP=1
@@ -79,6 +80,12 @@ MUTANTS = {
 	"table_single_is_double": ("chars_escape.hh", "if (quote == '\\'') { return escape_table_single; }", "if (quote == '\\'') { return escape_table_double; }", "all", None),
 	"table_custom_not_built": ("chars_escape.hh", "scratch = make_escape_table(quote);", "scratch = make_escape_table('\\0');", "all", None),
 	"byte_pair_letter": ("chars_escape.hh", "*d++ = static_cast<char>(t.rep[c]);", "*d++ = 'n';", "all", None),
+
+	# ---- chars_escape.hh: the scalar pair the entry points use for short input, and the shared tables
+	"scalar_measure_hex": ("chars_escape.hh", "while (b != e) { n += t.len[*b++]; }", "while (b != e) { n += t.len[*b++] & 3; }", "all", None),
+	"scalar_emit_last_byte": ("chars_escape.hh", "while (b != e) { d = escape_byte(d, *b++, t); }", "while (b + 1 < e) { d = escape_byte(d, *b++, t); }", "all", None),
+	"shared_double_is_single": ("chars_escape.hh", "if (quote == '\"') { return &escape_table_double; }", "if (quote == '\"') { return &escape_table_single; }", "all", None),
+	"shared_any_quote": ("chars_escape.hh", "\treturn nullptr;", "\treturn &escape_table_none;", "all", None),
 
 	# ---- chars_escape.hh: the 8-byte test and loops (the whole kernel on swar, the tails elsewhere)
 	"dirty8_quote": ("chars_escape.hh", "has_zero(x ^ q8) |", "", "all", None),

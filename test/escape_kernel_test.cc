@@ -47,7 +47,15 @@ static void check_one(const std::string& s, char quote) {
 	const auto* e = b + s.size();
 	const std::string want = ref_escape(s, quote);
 	CHECK(chars::escape_measure(b, e, t) == want.size());
+	CHECK(chars::escape_measure_scalar(b, e, t) == want.size());
 
+	{
+		// The scalar writer on its own, at any length, with exactly the measured room.
+		std::unique_ptr<char[]> out(new char[want.size() + 1]);
+		char* end = chars::escape_emit_scalar(out.get(), b, e, t);
+		CHECK(static_cast<std::size_t>(end - out.get()) == want.size());
+		CHECK(std::memcmp(out.get(), want.data(), want.size()) == 0);
+	}
 	{
 		std::unique_ptr<char[]> out(new char[want.size() + 1]);
 		char* end = chars::escape_emit(out.get(), b, e, t);
@@ -83,6 +91,15 @@ static void test_tables() {
 	}
 	// The shared tables are the three common modes.
 	CHECK(chars::escape_table_none.quote == '\0' && chars::escape_table_single.quote == '\'' && chars::escape_table_double.quote == '"');
+	// escape_table_shared names them, and nothing else.
+	CHECK(chars::escape_table_shared('\0') == &chars::escape_table_none);
+	CHECK(chars::escape_table_shared('\'') == &chars::escape_table_single);
+	CHECK(chars::escape_table_shared('"') == &chars::escape_table_double);
+	for (int q = 0; q < 256; ++q) {
+		const char quote = static_cast<char>(q);
+		if (quote == '\0' || quote == '\'' || quote == '"') { continue; }
+		CHECK(chars::escape_table_shared(quote) == nullptr);
+	}
 	static_assert(chars::make_escape_table('"').len['"'] == 2, "built at compile time");
 }
 
@@ -138,8 +155,12 @@ static void check_guarded(const std::string& s, char quote, GuardedRegion& in_re
 		const auto* b = reinterpret_cast<const unsigned char*>(in);
 		const auto* e = b + s.size();
 		CHECK(chars::escape_measure(b, e, t) == want.size());
+		CHECK(chars::escape_measure_scalar(b, e, t) == want.size());
 		char* out = out_region.at_end(want.size());
 		char* end = chars::escape_emit(out, b, e, t);
+		CHECK(end == out + want.size());
+		CHECK(std::memcmp(out, want.data(), want.size()) == 0);
+		end = chars::escape_emit_scalar(out, b, e, t);
 		CHECK(end == out + want.size());
 		CHECK(std::memcmp(out, want.data(), want.size()) == 0);
 	}

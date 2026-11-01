@@ -223,7 +223,7 @@ void hex() {
 	std::string unhexed;
 	const bool decoded = absl::HexStringToBytes(digits, &unhexed);
 	row("hex", "hex_value decode, 4096 B", "absl::HexStringToBytes", decoded && unhexed == b, by_value,
-		[&] { std::string o; absl::HexStringToBytes(digits, &o); keep(o); }, bytes, "byte");
+		[&] { std::string o; (void)absl::HexStringToBytes(digits, &o); keep(o); }, bytes, "byte");
 #endif
 }
 

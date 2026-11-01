@@ -112,6 +112,22 @@ inline const EscapeTable& escape_table(char quote, EscapeTable& scratch) noexcep
 	return escape_table_custom(quote, scratch);
 }
 
+// The shared table for '\0', '\'' or '"', and nullptr for any other quote (which needs a table
+// built in a scratch, and so a frame an entry point for short input does not want).
+inline const EscapeTable* escape_table_shared(char quote) noexcept {
+	if (quote == '\0') { return &escape_table_none; }
+	if (quote == '\'') { return &escape_table_single; }
+	if (quote == '"') { return &escape_table_double; }
+	return nullptr;
+}
+
+// Ranges shorter than this are escaped one byte at a time (escape_measure_scalar and
+// escape_emit_scalar), which is also what escape_measure and escape_emit do for them: the
+// 8-byte step needs 8 bytes. An entry point that sees such a range can call the scalar pair
+// directly, before it sets up anything for the block loops (a frame that saves every register
+// the block loops use costs more than escaping one to four bytes).
+inline constexpr std::size_t escape_scalar_max = 8;
+
 namespace escape_detail {
 
 inline constexpr std::uint64_t ones = 0x0101010101010101ULL;
@@ -231,11 +247,26 @@ inline char* escape_byte(char* d, unsigned char c, const EscapeTable& t) noexcep
 	return d;
 }
 
+// The bytes [b, e) take once escaped, summed a byte at a time (the quotes around the whole are not
+// counted). Any length; the entry points use it for fewer than escape_scalar_max bytes.
+CHARS_ALWAYS_INLINE std::size_t escape_measure_scalar(const unsigned char* b, const unsigned char* e, const EscapeTable& t) noexcept {
+	std::size_t n = 0;
+	while (b != e) { n += t.len[*b++]; }
+	return n;
+}
+
+// Writes the escape of [b, e) at d a byte at a time and returns the end; the room at d must be
+// exactly what escape_measure_scalar says, as nothing is written beyond it.
+CHARS_ALWAYS_INLINE char* escape_emit_scalar(char* d, const unsigned char* b, const unsigned char* e, const EscapeTable& t) noexcept {
+	while (b != e) { d = escape_byte(d, *b++, t); }
+	return d;
+}
+
 // The bytes [b, e) take once escaped (the quotes around the whole are not counted).
 CHARS_ALWAYS_INLINE std::size_t escape_measure(const unsigned char* b, const unsigned char* e, const EscapeTable& t) noexcept {
 	using namespace escape_detail;
 	std::size_t n = 0;
-	if (e - b >= 8) {
+	if (e - b >= static_cast<std::ptrdiff_t>(escape_scalar_max)) {
 #if defined(CHARS_SIMD_VECTOR)
 		if (e - b >= static_cast<std::ptrdiff_t>(simd::width)) {
 			const Measured r = measure_blocks(b, e, t);
@@ -255,8 +286,7 @@ CHARS_ALWAYS_INLINE std::size_t escape_measure(const unsigned char* b, const uns
 			b += 8;
 		}
 	}
-	while (b != e) { n += t.len[*b++]; }
-	return n;
+	return n + escape_measure_scalar(b, e, t);
 }
 
 // Writes the escape of [b, e) at d and returns the end. The room at d must be at least
@@ -264,7 +294,7 @@ CHARS_ALWAYS_INLINE std::size_t escape_measure(const unsigned char* b, const uns
 // block-wise stores below rely on).
 CHARS_ALWAYS_INLINE char* escape_emit(char* d, const unsigned char* b, const unsigned char* e, const EscapeTable& t) noexcept {
 	using namespace escape_detail;
-	if (e - b >= 8) {
+	if (e - b >= static_cast<std::ptrdiff_t>(escape_scalar_max)) {
 #if defined(CHARS_SIMD_VECTOR)
 		if (e - b >= static_cast<std::ptrdiff_t>(2 * simd::width)) {
 			const Emitted r = emit_blocks(d, b, e, t);
@@ -285,8 +315,7 @@ CHARS_ALWAYS_INLINE char* escape_emit(char* d, const unsigned char* b, const uns
 			b += 8;
 		}
 	}
-	while (b != e) { d = escape_byte(d, *b++, t); }
-	return d;
+	return escape_emit_scalar(d, b, e, t);
 }
 
 }  // namespace chars
