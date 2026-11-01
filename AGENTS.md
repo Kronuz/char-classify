@@ -18,10 +18,11 @@ test/guard_page.hh           GuardedRegion: a buffer that ends (or starts) exact
 tools/mutants.py             Breaks the hex table, the block scanners and the escaping kernel in about 90 ways (per backend) and requires one of the tests to fail on each.
 bench/compare.cc             Classification, hex, case folding, scanning and the escape kernel against arithmetic loops, <cctype>, memchr and, when found, abseil (CHAR_CLASSIFY_BUILD_BENCH). Also built with CHARS_NO_SIMD as a twin; `--check` is a CTest.
 CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest tests `char_classify`, `chars_simd`, `chars_simd_swar`, `chars_escape_kernel`, `chars_escape_kernel_swar`, and with the bench option `char_classify_compare`, `char_classify_compare_swar`.
-LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC.
+LICENSE                      MIT, Copyright (c) 2026 Germán Méndez Bravo and (c) 2015-2020 Dubalu LLC.
 CHANGELOG.md                 Dated changes, with numbers.
 README.md                    What it is, install, quick start.
 docs/API.md                  What it provides and usage.
+docs/perf/README.md          The full bench/compare.cc tables on the M4 Pro and the i9.
 ARCHITECTURE.md              Internal design of the classification table, the block scanners and the escaping kernel, trade-offs.
 ```
 
