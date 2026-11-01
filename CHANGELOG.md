@@ -4,6 +4,42 @@ All notable changes to this library. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The library has no
 release tags yet, so entries are dated.
 
+## 2026-11-01
+
+### Added
+
+- **`bench/compare.cc`** (`CHAR_CLASSIFY_BUILD_BENCH`, off by default; abseil is found with `find_package` in the
+  bench target only). Classification, hex encode and decode, case folding, scanning and the escaping kernel
+  against arithmetic loops, `<cctype>`, `memchr`, a scalar table loop and abseil. Both sides compute the same
+  result, checked before a row is timed; `--check` runs only the checks and is a ctest when the option is on.
+  `char_classify_compare_swar` is the same program with `CHARS_NO_SIMD`, for a paired run of the vector backend
+  against the portable one. The README Performance section has the numbers on an Apple M4 Pro and an Intel
+  i9-9980HK, with the rows where the library is behind: a compiler-vectorized arithmetic loop is 1.3x faster than
+  the `is_alpha` table, `FirstOf<1>` is 1.4x to 2.6x slower than the system `memchr` on x86 from 256 bytes up,
+  `hexdec` takes twice as long as arithmetic, and `absl::HexStringToBytes` is 2x to 3.4x faster than `hex_value`.
+- **`tools/mutants.py`.** 93 deliberate bugs in `chars.hh`, `chars_simd.hh` and `chars_escape.hh` (the hex table,
+  the scalar rules and table of the escaper, the 8-byte test and its loops, the block kernel, the mask operations,
+  the scanners, the case fold, and each backend's own operations), each built against the three tests in the
+  target's backend and with `CHARS_NO_SIMD`; every one must make a test fail, crash or hang. On the i9 (SSE2 and
+  portable) 87 of 87 are killed, on the M4 Pro (NEON and portable) 84 of 84; a backend the host does not build
+  is skipped and reported.
+- **`test/guard_page.hh` and two guard-page tests.** `test_no_overread` in `test/simd_test.cc` runs `find`,
+  `find_outside`, `ascii_lower` and `ascii_upper` with the input and the output ending exactly at an unmapped
+  page, and the input starting exactly at one, for every length up to three blocks; `test_no_overrun` in
+  `test/escape_kernel_test.cc` does the same for `escape_measure` and `escape_emit` with the output exactly the
+  measured size, in four quote modes. A read or write one byte outside the bytes given is a crash in any build,
+  where before it needed a sanitizer. The first run of `tools/mutants.py` had four survivors; two are equivalent
+  mutants (an `if` that the loop condition repeats, and the quote slot of the writer, which a NUL does not change
+  because it is outside the printable range), and two read one byte past the end in the tail block of
+  `FirstOf::find` and `Outside::find` without changing the result. The guard-page test kills those two, and the
+  mutants that read a byte beyond the input in the 8-byte loops of measure and emit die with a segmentation fault.
+
+### Measured
+
+Against the frozen original of `repr` and `escape` (their changelogs have the tables), one to four printable
+bytes take 0.4 to 3 ns longer with the shared kernel: the fixed work of the table and the block test. From 8 bytes
+up it is 2.5x to 3.7x faster.
+
 ## 2026-10-31
 
 ### Added
