@@ -12,9 +12,12 @@ chars.hh                     Table-driven constexpr char classification (is_*, h
 chars_simd.hh                Block scanners (FirstOf, Outside, find_outside, ascii_lower/upper) over NEON, SSE2 or a 64-bit SWAR fallback. CHARS_NO_SIMD forces the fallback. Header.
 chars_escape.hh              The C escaping kernel shared by escape() and repr(): EscapeTable, escape_measure, escape_emit. Header.
 test/test.cc                 Runnable smoke test: classification, hex helpers, case folding.
-test/simd_test.cc            chars_simd.hh against scalar references (every byte at every lane, every short length, guard bytes). Built twice.
-test/escape_kernel_test.cc   chars_escape.hh against a scalar oracle (every byte at every position, random mixes, room checks). Built twice.
-CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest tests `char_classify`, `chars_simd`, `chars_simd_swar`, `chars_escape_kernel`, `chars_escape_kernel_swar`.
+test/simd_test.cc            chars_simd.hh against scalar references (every byte at every lane, every short length, guard bytes, and the input and output against an unmapped page). Built twice.
+test/escape_kernel_test.cc   chars_escape.hh against a scalar oracle (every byte at every position, random mixes, room checks, and the output and input against an unmapped page). Built twice.
+test/guard_page.hh           GuardedRegion: a buffer that ends (or starts) exactly at an unmapped page, so a read or write one byte outside it crashes. POSIX; the guard tests compile to nothing elsewhere.
+tools/mutants.py             Breaks the hex table, the block scanners and the escaping kernel in about 90 ways (per backend) and requires one of the tests to fail on each.
+bench/compare.cc             Classification, hex, case folding, scanning and the escape kernel against arithmetic loops, <cctype>, memchr and, when found, abseil (CHAR_CLASSIFY_BUILD_BENCH). Also built with CHARS_NO_SIMD as a twin; `--check` is a CTest.
+CMakeLists.txt               INTERFACE library `char_classify` (+ alias char_classify::char_classify); CTest tests `char_classify`, `chars_simd`, `chars_simd_swar`, `chars_escape_kernel`, `chars_escape_kernel_swar`, and with the bench option `char_classify_compare`, `char_classify_compare_swar`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC.
 CHANGELOG.md                 Dated changes, with numbers.
 README.md                    What it is, install, quick start.
@@ -36,6 +39,13 @@ Expected output ends with `all char-classify tests passed`, exit 0. The test
 target is `char_classify_test`; the registered CTest name is `char_classify`. The
 scanner and kernel tests run twice, once with the backend of the target and once with
 `CHARS_NO_SIMD` (the `_swar` tests), so both must agree with the reference.
+
+After a change to `chars_simd.hh`, `chars_escape.hh` or the hex table, run
+`python3 tools/mutants.py . [CXX]`: every mutant must be killed. A neon mutant needs an
+arm64 host, an sse2 one an x86-64 host or `CXXFLAGS="-arch x86_64"` on an Apple silicon
+Mac (Rosetta); the tool lists the mutants it skips. `-DCHAR_CLASSIFY_BUILD_BENCH=ON` (with
+`-DCMAKE_BUILD_TYPE=Release`) builds `char_classify_compare` and `char_classify_compare_swar`,
+the same program on the portable backend, for a paired run.
 
 ## Conventions
 

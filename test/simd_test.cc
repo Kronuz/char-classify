@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "chars_simd.hh"
-
+#include "guard_page.hh"
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #c); std::exit(1); } } while (0)
 
 namespace simd = chars::simd;
@@ -246,6 +246,55 @@ static void test_case_fold() {
 	}
 }
 
+#ifdef CHARS_TEST_GUARD_PAGES
+// The scanners read only [p, end) and the case fold writes only n bytes. With the bytes against an
+// unmapped page (after them, then before them), one byte too many is a crash, in any build.
+template <typename Find>
+static void guard_find(const Find& find, char miss, char hit) {
+	GuardedRegion region(4096);
+	for (std::size_t len = 0; len <= 3 * simd::width + 5; ++len) {
+		for (int side = 0; side < 2; ++side) {
+			char* p = side == 0 ? region.at_end(len) : region.at_start();
+			for (int pos = -1; pos < static_cast<int>(len); ++pos) {  // -1: no hit at all
+				std::memset(p, miss, len);
+				if (pos >= 0) { p[pos] = hit; }
+				CHECK(find(p, p + len) == (pos >= 0 ? p + pos : p + len));
+			}
+		}
+	}
+}
+
+static void test_no_overread() {
+	const simd::FirstOf<2> amp_eq('&', '=');
+	guard_find([&](const char* p, const char* e) { return amp_eq.find(p, e); }, 'a', '=');
+	const simd::FirstOf<1> nul(static_cast<unsigned char>(0));
+	guard_find([&](const char* p, const char* e) { return nul.find(p, e); }, 'a', '\0');
+	const simd::Outside<2> dirty(0x20, 0x7e, '\\', '\'');
+	guard_find([&](const char* p, const char* e) { return dirty.find(p, e); }, 'a', '\n');
+	guard_find([&](const char* p, const char* e) { return dirty.find(p, e); }, 'a', '\'');
+	guard_find([&](const char* p, const char* e) { return simd::find_outside(p, e, '0', '9'); }, '5', 'x');
+
+	GuardedRegion in_region(4096), out_region(4096);
+	static const char mix[] = "aZ@[`{ ~\x80_M";
+	for (std::size_t len = 0; len <= 3 * simd::width + 5; ++len) {
+		for (int upper = 0; upper < 2; ++upper) {
+			char* s = in_region.at_end(len);
+			char* d = out_region.at_end(len);
+			Bytes want(len);
+			for (std::size_t i = 0; i < len; ++i) {
+				s[i] = mix[(i + len) % (sizeof mix - 1)];
+				const unsigned char c = static_cast<unsigned char>(s[i]);
+				want[i] = upper ? ref_upper(c) : ref_lower(c);
+			}
+			(upper ? simd::ascii_upper : simd::ascii_lower)(s, len, d);
+			for (std::size_t i = 0; i < len; ++i) { CHECK(static_cast<unsigned char>(d[i]) == want[i]); }
+			(upper ? simd::ascii_upper : simd::ascii_lower)(s, len, s);  // in place
+			for (std::size_t i = 0; i < len; ++i) { CHECK(static_cast<unsigned char>(s[i]) == want[i]); }
+		}
+	}
+}
+#endif
+
 int main() {
 	test_backend();
 	test_mask_ops();
@@ -259,6 +308,9 @@ int main() {
 	test_outside<3>();
 	test_find_outside();
 	test_case_fold();
+#ifdef CHARS_TEST_GUARD_PAGES
+	test_no_overread();
+#endif
 	std::printf("all chars_simd tests passed (%s)\n", simd::backend);
 	return 0;
 }

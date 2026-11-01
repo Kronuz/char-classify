@@ -35,6 +35,26 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_test(NAME chars_${name}_swar COMMAND chars_${name}_test_swar)
   endforeach()
 
+  # Comparison benchmark (not run by ctest): classification, hex, case folding, scanning and the
+  # escaping kernel against arithmetic loops, <cctype>, memchr and, when abseil is installed,
+  # abseil. The comparators are optional and never a dependency of the library target.
+  # char_classify_compare_swar is the same program with the portable backend forced, for a paired
+  # run. With the option on, both also run in `--check` mode under ctest (results, no timing).
+  option(CHAR_CLASSIFY_BUILD_BENCH "Build bench/compare.cc" OFF)
+  if(CHAR_CLASSIFY_BUILD_BENCH)
+    find_package(absl QUIET)
+    foreach(variant "" _swar)
+      add_executable(char_classify_compare${variant} bench/compare.cc)
+      target_link_libraries(char_classify_compare${variant} PRIVATE char_classify)
+      if(absl_FOUND)
+        target_compile_definitions(char_classify_compare${variant} PRIVATE HAVE_ABSL=1)
+        target_link_libraries(char_classify_compare${variant} PRIVATE absl::strings)
+      endif()
+      add_test(NAME char_classify_compare${variant} COMMAND char_classify_compare${variant} --check)
+    endforeach()
+    target_compile_definitions(char_classify_compare_swar PRIVATE CHARS_NO_SIMD=1)
+  endif()
+
   # A runnable tour of the library (not a test): build & run ./build/char_classify_demo
   add_executable(char_classify_demo examples/demo.cc)
   target_link_libraries(char_classify_demo PRIVATE char_classify)

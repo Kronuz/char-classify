@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "chars_escape.hh"
-
+#include "guard_page.hh"
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #c); std::exit(1); } } while (0)
 
 static std::mt19937_64 rng(777);
@@ -124,11 +124,59 @@ static void test_random() {
 	}
 }
 
+#ifdef CHARS_TEST_GUARD_PAGES
+// The measured bytes are the room the writer gets and the input bytes are all it may read. Against an
+// unmapped page, one byte more or less than that is a crash, in any build: the output ends exactly at
+// the page, and the input ends exactly at a page and then starts exactly at one.
+static void check_guarded(const std::string& s, char quote, GuardedRegion& in_region, GuardedRegion& out_region) {
+	chars::EscapeTable scratch;
+	const chars::EscapeTable& t = chars::escape_table(quote, scratch);
+	const std::string want = ref_escape(s, quote);
+	for (int side = 0; side < 2; ++side) {
+		char* in = side == 0 ? in_region.at_end(s.size()) : in_region.at_start();
+		std::memcpy(in, s.data(), s.size());
+		const auto* b = reinterpret_cast<const unsigned char*>(in);
+		const auto* e = b + s.size();
+		CHECK(chars::escape_measure(b, e, t) == want.size());
+		char* out = out_region.at_end(want.size());
+		char* end = chars::escape_emit(out, b, e, t);
+		CHECK(end == out + want.size());
+		CHECK(std::memcmp(out, want.data(), want.size()) == 0);
+	}
+}
+
+static void test_no_overrun() {
+	GuardedRegion in_region(1 << 14), out_region(1 << 16);
+	static const unsigned char interesting[] = {0, '\n', '\\', '\'', '"', ' ', '~', 0x7f, 0x80, 'a'};
+	static const char quotes[] = {'\0', '\'', '"', 'A'};
+	for (char quote : quotes) {
+		for (std::size_t len = 0; len <= 70; ++len) {
+			for (std::size_t pos = 0; pos < len; ++pos) {
+				for (unsigned char v : interesting) {
+					std::string s(len, 'a');
+					s[pos] = static_cast<char>(v);
+					check_guarded(s, quote, in_region, out_region);
+				}
+			}
+		}
+	}
+	for (int r = 0; r < 3000; ++r) {
+		const int pct = static_cast<int>(rng() % 101);
+		std::string s(rng() % 300, 'a');
+		for (auto& c : s) { c = (static_cast<int>(rng() % 100) < pct) ? static_cast<char>(rng()) : static_cast<char>(0x20 + rng() % 95); }
+		check_guarded(s, kQuotes[rng() % (sizeof kQuotes)], in_region, out_region);
+	}
+}
+#endif
+
 int main() {
 	std::printf("chars_escape: backend %s\n", chars::simd::backend);
 	test_tables();
 	test_every_byte_everywhere();
 	test_random();
+#ifdef CHARS_TEST_GUARD_PAGES
+	test_no_overrun();
+#endif
 	std::printf("all chars_escape tests passed (%s)\n", chars::simd::backend);
 	return 0;
 }
