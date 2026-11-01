@@ -29,6 +29,23 @@ release tags yet, so entries are dated.
   `0xff` (`chars::NO_HEX_VALUE`) for any byte that is not a hex digit. It agrees with
   `hexdigit` on all 256 bytes.
 
+### Measured
+
+Through `escape()` and `repr()` (the tables are in their changelogs), against the previous
+8-byte SWAR kernel each repository carried: 2.2x to 3.0x faster on 4 KB printable input,
+2.1x (M4 Pro) and 3.7x (i9-9980HK) on 64 KB input with 10% non-printable bytes, and no row
+more than 2% slower on either machine (inputs of 1 to 40 bytes are within noise).
+`absl::CEscape`, which writes another format, takes 1.3x (i9, `repr`) to 2.8x (M4 Pro,
+`repr`) longer on the 64 KB mixed row. GitHub runners on Apple silicon, Neoverse, AMD EPYC
+and Intel Xeon agree: the same row is 2.9x to 6.9x faster than the previous kernel and 1.3x
+to 3.1x faster than `absl::CEscape`.
+
+The portable backend (`CHARS_NO_SIMD`, used only where neither NEON nor SSE2 exists, and by
+the `*_swar` test twins) is not the one measured above. For `escape` it is slower than the
+previous kernel on most inputs (0.9x on printable text on the M4 Pro; 0.7x to 0.9x on the
+i9) and faster only on dense escapes on the M4 Pro (1.1x). For `repr` it is level on the M4
+Pro and 0.85x to 1.0x on the i9.
+
 ### Changed
 
 - Documentation: the README, `docs/API.md`, `ARCHITECTURE.md` and `AGENTS.md` describe the two new headers.
